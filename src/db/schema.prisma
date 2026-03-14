@@ -1,0 +1,23 @@
+generator client {
+ provider = "prisma-client-js"
+}
+
+datasource db {
+ provider = "postgresql"
+ url      = env("DATABASE_URL")
+}
+
+model OptimizationRequest {
+ id                 String   @id @default(uuid())
+ driver_id          String
+ driver_name        String
+ stops_input        Json
+ optimized_sequence Json
+ legs               Json
+ route_geometry     Json
+ total_distance_m   Int
+ total_duration_s   Int
+ solver_time_ms     Int
+ time_limit_ms      Int
+ created_at         DateTime @default(now())
+}
