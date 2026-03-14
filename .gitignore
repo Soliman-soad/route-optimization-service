@@ -1,2 +1,11 @@
+node_modules/
+dist/
 .env
-node_modules
+*.env
+coverage/
+.DS_Store
+*.log
+__pycache__/
+*.pyc
+*.pyo
+.venv/
