@@ -49,18 +49,41 @@ const swaggerSpec = swaggerJsdoc({
           properties: {
             driver: {
               type: 'object',
-              required: ['id', 'name', 'start_lat', 'start_lng'],
               properties: {
                 id: { type: 'string', example: 'driver-001' },
                 name: { type: 'string', example: 'Ahmed Hassan' },
                 start_lat: { type: 'number', example: 23.8103 },
-                start_lng: { type: 'number', example: 90.4125 },
-              },
+                start_lng: { type: 'number', example: 90.4125 }
+              }
             },
-            stops: { type: 'array', items: { $ref: '#/components/schemas/StopInput' } },
-            time_limit_ms: { type: 'integer', example: 5000 },
-          },
-        },
+            stops: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/StopInput' },
+              example: [
+                {
+                  id: "order-001",
+                  label: "Banani",
+                  lat: 23.7946,
+                  lng: 90.4050,
+                  time_window_start: "13:00",
+                  time_window_end: "15:00",
+                  service_time_s: 180
+                },
+                {
+                  id: "order-002",
+                  label: "Gulshan",
+                  lat: 23.7808,
+                  lng: 90.4147,
+                  time_window_start: "14:00",
+                  time_window_end: "16:30",
+                  service_time_s: 120
+                }
+              ]
+            },
+            time_limit_ms: { type: 'integer', example: 5000 }
+          }
+        }
+        
       },
     },
   },
