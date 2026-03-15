@@ -74,6 +74,8 @@ export async function optimizeRoute(req: OptimizeRequest): Promise<OptimizeRespo
   // Step 2: Run OR-Tools VRP solver
   const solverResult = await solveVRP(stops, durationMatrix, timeLimitMs);
 
+  console.log('solverResult', solverResult);
+
   if (!solverResult.success) {
     if (solverResult.error?.includes('timed out') || solverResult.solver_time_ms >= timeLimitMs) {
       const err = new Error('Solver timed out') as Error & { code: string; time_limit_ms: number };

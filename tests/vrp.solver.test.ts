@@ -1,75 +1,114 @@
 /**
  * VRP Solver unit tests.
- * We mock child_process.execFile so these tests are deterministic
- * and don't require Python/OR-Tools installed in the test environment.
- *
- * vrp.solver.ts calls promisify(execFile). Since promisify is called at
- * module load time, we intercept by mocking the entire child_process module
- * before the module is imported, using jest.mock hoisting.
+ * Mocks child_process.spawn so tests are deterministic and don't require Python/OR-Tools.
  */
-
-// Must be declared before imports due to jest.mock hoisting
-const mockExecFile = jest.fn();
+const mockSpawn = jest.fn();
 
 jest.mock('child_process', () => ({
-  execFile: (...args: unknown[]) => mockExecFile(...args),
+  spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
-// Also mock util so promisify returns a function that delegates to mockExecFile
-jest.mock('util', () => {
-  const actual = jest.requireActual<typeof import('util')>('util');
-  return {
-    ...actual,
-    promisify: (fn: Function) => {
-      // Return the promisified mock only for execFile-like functions
-      if (fn.toString().includes('execFile') || fn === mockExecFile) {
-        return (...args: unknown[]) =>
-          new Promise((resolve, reject) => {
-            mockExecFile(...args, (err: Error | null, stdout: string, stderr: string) => {
-              if (err) reject(err);
-              else resolve({ stdout, stderr });
-            });
-          });
-      }
-      return actual.promisify(fn);
-    },
-  };
-});
+jest.mock('../src/utils/logger', () => ({
+  __esModule: true,
+  default: {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  },
+}));
 
 import { solveVRP } from '../src/solver/vrp.solver';
 
-// Helper to mock execFile resolving with a given stdout
 function mockSolverOutput(output: object) {
-  mockExecFile.mockImplementation(
-    (_cmd: string, _args: string[], _opts: unknown, callback: Function) => {
-      callback(null, JSON.stringify(output), '');
-    }
-  );
+  mockSpawn.mockImplementation(() => {
+    const stdoutListeners: ((chunk: Buffer) => void)[] = [];
+    const closeListeners: (() => void)[] = [];
+
+    return {
+      stdin: {
+        write(_data: string) {},
+        end() {
+          const out = JSON.stringify(output);
+          stdoutListeners.forEach((fn) => fn(Buffer.from(out)));
+          closeListeners.forEach((fn) => fn());
+        },
+      },
+      stdout: {
+        on(ev: string, fn: (chunk: Buffer) => void) {
+          if (ev === 'data') stdoutListeners.push(fn);
+        },
+      },
+      stderr: { on() {} },
+      on(ev: string, fn: () => void) {
+        if (ev === 'close') closeListeners.push(fn);
+      },
+      kill: jest.fn(),
+    };
+  });
 }
 
 function mockSolverError(errMsg: string) {
-  mockExecFile.mockImplementation(
-    (_cmd: string, _args: string[], _opts: unknown, callback: Function) => {
-      callback(new Error(errMsg), '', errMsg);
+  mockSpawn.mockImplementation(() => {
+    const errorListeners: ((err: Error) => void)[] = [];
+    return {
+      stdin: { write() {}, end() {} },
+      stdout: { on() {} },
+      stderr: { on() {} },
+      on(ev: string, fn: (err: Error) => void) {
+        if (ev === 'error') errorListeners.push(fn);
+      },
+      kill: jest.fn(),
+    };
+  });
+  // Emit error on next tick so the solver has registered the listener
+  setImmediate(() => {
+    const child = mockSpawn.mock.results[mockSpawn.mock.results.length - 1]?.value;
+    if (child?.on) {
+      const listeners = (child as any)._errorListeners ?? [];
+      listeners.forEach((fn: (e: Error) => void) => fn(new Error(errMsg)));
     }
-  );
+  });
+}
+
+// Simulate process error by having spawn return a child that emits 'error' when end() is called
+function mockSolverProcessError(errMsg: string) {
+  mockSpawn.mockImplementation(() => {
+    const errorListeners: ((err: Error) => void)[] = [];
+    return {
+      stdin: {
+        write() {},
+        end() {
+          errorListeners.forEach((fn) => fn(new Error(errMsg)));
+        },
+      },
+      stdout: { on() {} },
+      stderr: { on() {} },
+      on(ev: string, fn: (err: Error) => void) {
+        if (ev === 'error') errorListeners.push(fn);
+      },
+      kill: jest.fn(),
+    };
+  });
 }
 
 const STOPS = [
-  { id: 's1', label: 'Banani',  lat: 23.7946, lng: 90.4050, time_window_start: '13:00', time_window_end: '15:00', service_time_s: 180 },
+  { id: 's1', label: 'Banani', lat: 23.7946, lng: 90.4050, time_window_start: '13:00', time_window_end: '15:00', service_time_s: 180 },
   { id: 's2', label: 'Gulshan', lat: 23.7808, lng: 90.4147, time_window_start: '14:00', time_window_end: '16:30', service_time_s: 120 },
-  { id: 's3', label: 'Uttara',  lat: 23.8759, lng: 90.3795, time_window_start: '12:30', time_window_end: '14:00', service_time_s: 300 },
+  { id: 's3', label: 'Uttara', lat: 23.8759, lng: 90.3795, time_window_start: '12:30', time_window_end: '14:00', service_time_s: 300 },
 ];
 
-// 4x4 duration matrix (depot + 3 stops)
 const DURATION_MATRIX = [
-  [0,    980,  1340, 720],
-  [850,  0,    620,  890],
-  [1200, 590,  0,    1050],
-  [700,  870,  1010, 0],
+  [0, 980, 1340, 720],
+  [850, 0, 620, 890],
+  [1200, 590, 0, 1050],
+  [700, 870, 1010, 0],
 ];
 
 describe('vrp.solver — solveVRP', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   test('1. returns success=true with correct sequence for known input', async () => {
     const mockOutput = {
       success: true,
@@ -122,8 +161,8 @@ describe('vrp.solver — solveVRP', () => {
     expect(result.error).toBeDefined();
   });
 
-  test('4. handles Python process crash gracefully', async () => {
-    mockSolverError('python3: command not found');
+  test('4. handles process error gracefully', async () => {
+    mockSolverProcessError('python3: command not found');
 
     const result = await solveVRP(STOPS, DURATION_MATRIX, 5000);
 
@@ -134,11 +173,16 @@ describe('vrp.solver — solveVRP', () => {
   test('5. includes solver_time_ms in all responses', async () => {
     mockSolverOutput({
       success: true,
-      sequence: [{ node_index: 0, stop_id: 's1', arrival_s: 0 }, { node_index: 1, stop_id: 's2', arrival_s: 1000 }, { node_index: 2, stop_id: 's3', arrival_s: 2000 }],
+      sequence: [
+        { node_index: 0, stop_id: 's1', arrival_s: 0 },
+        { node_index: 1, stop_id: 's2', arrival_s: 1000 },
+        { node_index: 2, stop_id: 's3', arrival_s: 2000 },
+      ],
       solver_time_ms: 342,
     });
 
     const result = await solveVRP(STOPS, DURATION_MATRIX, 5000);
     expect(typeof result.solver_time_ms).toBe('number');
+    expect(result.solver_time_ms).toBe(342);
   });
 });

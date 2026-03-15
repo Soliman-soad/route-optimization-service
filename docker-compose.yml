@@ -25,6 +25,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://postgres:password@db:5432/routeopt
       PORT: 3000

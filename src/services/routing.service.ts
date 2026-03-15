@@ -47,13 +47,15 @@ export async function getMatrix(points: CoordPoint[]): Promise<MatrixResult> {
   // ORS expects [lng, lat]
   const locations = points.map((p) => [p.lng, p.lat]);
 
+  
+
   try {
     const response = await axios.post(
       `${ORS_BASE}/matrix/driving-car`,
       { locations, metrics: ['duration'] },
       {
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: apiKey,
           'Content-Type': 'application/json',
         },
         timeout: 15000,
@@ -92,7 +94,7 @@ export async function getDirections(
       { coordinates },
       {
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `${apiKey}`,
           'Content-Type': 'application/json',
         },
         timeout: 15000,

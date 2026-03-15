@@ -2,6 +2,14 @@ import axios from 'axios';
 import { getMatrix, getDirections } from '../src/services/routing.service';
 
 jest.mock('axios');
+jest.mock('../src/utils/logger', () => ({
+  __esModule: true,
+  default: {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  },
+}));
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 // Set ORS key env var

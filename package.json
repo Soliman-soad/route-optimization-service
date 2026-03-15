@@ -11,7 +11,8 @@
     "test:coverage": "jest --coverage --runInBand --forceExit",
     "lint": "tsc --noEmit",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "setup:python": "python -m pip install -r requirements.txt"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

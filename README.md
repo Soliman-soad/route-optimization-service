@@ -33,6 +33,20 @@ The service will be available at `http://localhost:3000`.
 
 > No other setup steps are needed. Database migrations run automatically on container startup.
 
+### Local development (without Docker)
+
+If you run the app locally (e.g. `npm run dev`), the VRP solver runs as a **Python 3** subprocess and needs the `ortools` package:
+
+```bash
+# Install Python dependencies (use the same Python that will be used at runtime)
+pip install -r requirements.txt
+# or:  pip3 install -r requirements.txt
+# or on Windows:  py -3 -m pip install -r requirements.txt
+# or:  npm run setup:python
+```
+
+Ensure **Python 3** is on your PATH as `python3` (or adjust the solver to use `python` / `py` if needed).
+
 ---
 
 ## API Reference

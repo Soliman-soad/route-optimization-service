@@ -26,33 +26,41 @@ function formatDistance(metres: number): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function renderMapPage(record: any): string {
+  const geom = record.route_geometry as { type?: string; coordinates?: [number, number][] } | null | undefined;
+  const coords = geom?.coordinates;
+  const firstCoord = Array.isArray(coords) && coords.length > 0 ? coords[0] : null;
+
+  const optimizedSequence = (record.optimized_sequence ?? []) as OptimizedStop[];
+  const legs = (record.legs ?? []) as MapPageData['legs'];
+
   const data: MapPageData = {
-    requestId: record.id,
-    driverId: record.driver_id,
-    driverName: record.driver_name,
-    driverStart: (() => {
-      // Extract driver start from stops_input or first leg
-      // We store driver coords in the DB via legs or we must re-derive from geometry first coordinate
-      // Fallback: use first coordinate of route_geometry
-      const geom = record.route_geometry as { coordinates: [number, number][] };
-      const first = geom.coordinates[0];
-      return { lat: first[1], lng: first[0] };
-    })(),
-    optimizedSequence: record.optimized_sequence as OptimizedStop[],
-    legs: record.legs as MapPageData['legs'],
-    routeGeometry: record.route_geometry as MapPageData['routeGeometry'],
-    totalDistanceM: record.total_distance_m as number,
-    totalDurationS: record.total_duration_s as number,
+    requestId: record.id ?? '',
+    driverId: record.driver_id ?? '',
+    driverName: record.driver_name ?? 'Driver',
+    // First coord of ORS geometry is [lng, lat] — flip to get driver start position
+    driverStart: firstCoord
+      ? { lat: firstCoord[1], lng: firstCoord[0] }
+      : optimizedSequence.length > 0
+        ? { lat: optimizedSequence[0].lat, lng: optimizedSequence[0].lng }
+        : { lat: 0, lng: 0 },
+    optimizedSequence,
+    legs,
+    routeGeometry: (record.route_geometry ?? { type: 'LineString', coordinates: [] }) as MapPageData['routeGeometry'],
+    totalDistanceM: Number(record.total_distance_m) || 0,
+    totalDurationS: Number(record.total_duration_s) || 0,
   };
 
   const stopsJson = JSON.stringify(data.optimizedSequence);
   const legsJson = JSON.stringify(data.legs);
-  const geometryJson = JSON.stringify(data.routeGeometry);
+  // Always a GeoJSON object from ORS — never an encoded string
+  const geometryJson = JSON.stringify(record.route_geometry ?? null);
   const driverJson = JSON.stringify({
     name: data.driverName,
     lat: data.driverStart.lat,
     lng: data.driverStart.lng,
   });
+
+  console.log('geometryJson', geometryJson);
 
   const stopRows = data.optimizedSequence
     .map((s, i) => {
@@ -100,7 +108,6 @@ export function renderMapPage(record: any): string {
     td.pos { font-weight: 700; color: #3a86ff; font-size: 0.95rem; text-align: center; }
     .meta { padding: 10px 16px; border-top: 1px solid #e0e4ef; font-size: 0.73rem; color: #aaa; }
     .leaflet-popup-content { font-size: 0.88rem; line-height: 1.4; }
-    .popup-num { font-weight: 700; color: #3a86ff; font-size: 1.1em; }
     @media (max-width: 700px) {
       .layout { flex-direction: column; }
       #map { height: 55vh; }
@@ -149,33 +156,38 @@ export function renderMapPage(record: any): string {
 
     var map = L.map('map');
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19
-    }).addTo(map);
-
-    // Satellite layer switcher (bonus)
+    // Base tile layers
     var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 19
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
     });
     var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles © Esri', maxZoom: 19
+      attribution: 'Tiles &copy; Esri',
+      maxZoom: 19
     });
-    L.control.layers(
-      { 'Street': streetLayer, 'Satellite': satelliteLayer },
-      {},
-      { position: 'topright' }
-    ).addTo(map);
+    streetLayer.addTo(map);
+    L.control.layers({ 'Street': streetLayer, 'Satellite': satelliteLayer }, {}, { position: 'topright' }).addTo(map);
 
-    // Draw route polyline from real road geometry
-    if (routeGeometry && routeGeometry.coordinates && routeGeometry.coordinates.length > 0) {
-      var latlngs = routeGeometry.coordinates.map(function(c) { return [c[1], c[0]]; });
-      L.polyline(latlngs, { color: '#3a86ff', weight: 4, opacity: 0.85 }).addTo(map);
-    }
-
+    // Declare allLatLngs FIRST before anything uses it
     var allLatLngs = [];
 
-    // Driver start marker
+    // Draw road polyline from stored GeoJSON LineString.
+    // ORS always returns { type: "LineString", coordinates: [[lng, lat], ...] }
+    // Leaflet needs [lat, lng] — flip each coordinate pair.
+    if (
+      routeGeometry &&
+      routeGeometry.type === 'LineString' &&
+      Array.isArray(routeGeometry.coordinates) &&
+      routeGeometry.coordinates.length > 0
+    ) {
+      var latlngs = routeGeometry.coordinates.map(function(c) {
+        return [c[1], c[0]]; // [lng, lat] -> [lat, lng]
+      });
+      L.polyline(latlngs, { color: '#3a86ff', weight: 5, opacity: 0.85 }).addTo(map);
+      latlngs.forEach(function(ll) { allLatLngs.push(ll); });
+    }
+
+    // Driver start marker (distinct icon)
     var startIcon = L.divIcon({
       className: '',
       html: '<div style="background:#1a1a2e;color:#4ecca3;border:2px solid #4ecca3;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">&#9654;</div>',
@@ -184,30 +196,31 @@ export function renderMapPage(record: any): string {
       popupAnchor: [0, -18]
     });
     var driverMarker = L.marker([driver.lat, driver.lng], { icon: startIcon }).addTo(map);
-    driverMarker.bindPopup('<div class="leaflet-popup-content"><b>Driver Start</b><br>' + driver.name + '</div>');
+    driverMarker.bindPopup('<div><b>Driver Start</b><br>' + driver.name + '</div>');
     allLatLngs.push([driver.lat, driver.lng]);
 
-    // Stop markers with numbers
+    // Numbered stop markers
     stops.forEach(function(stop) {
-      var color = '#3a86ff';
       var numIcon = L.divIcon({
         className: '',
-        html: '<div style="background:' + color + ';color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">' + stop.position + '</div>',
+        html: '<div style="background:#3a86ff;color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">' + stop.position + '</div>',
         iconSize: [30, 30],
         iconAnchor: [15, 15],
         popupAnchor: [0, -16]
       });
-
       var leg = legs[stop.position - 1];
-      var distText = leg ? (' &bull; ' + (leg.distance_m >= 1000 ? (leg.distance_m/1000).toFixed(1) + ' km' : leg.distance_m + ' m') + ' from prev') : '';
+      var distText = leg
+        ? ' &bull; ' + (leg.distance_m >= 1000 ? (leg.distance_m / 1000).toFixed(1) + ' km' : leg.distance_m + ' m') + ' from prev'
+        : '';
       var marker = L.marker([stop.lat, stop.lng], { icon: numIcon }).addTo(map);
       marker.bindPopup(
-        '<div class="leaflet-popup-content"><span class="popup-num">#' + stop.position + '</span> ' + stop.label + distText + '</div>'
+        '<div><span style="font-weight:700;color:#3a86ff;font-size:1.1em;">#' + stop.position + '</span> ' +
+        stop.label + distText + '</div>'
       );
       allLatLngs.push([stop.lat, stop.lng]);
     });
 
-    // Auto-fit bounds
+    // Auto-fit bounds to show everything
     if (allLatLngs.length > 0) {
       map.fitBounds(L.latLngBounds(allLatLngs), { padding: [40, 40] });
     }

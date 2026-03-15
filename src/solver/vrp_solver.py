@@ -11,7 +11,7 @@ import time
 
 def solve_vrp(data: dict) -> dict:
     from ortools.constraint_solver import routing_enums_pb2
-    from ortools.constraint_solver import pywraprouter
+    from ortools.constraint_solver import pywrapcp
 
     duration_matrix = data['duration_matrix']
     stops = data['stops']
@@ -20,8 +20,8 @@ def solve_vrp(data: dict) -> dict:
     num_locations = len(duration_matrix)
     # depot is index 0 (driver start)
 
-    manager = pywraprouter.RoutingIndexManager(num_locations, 1, 0)
-    routing = pywraprouter.RoutingModel(manager)
+    manager = pywrapcp.RoutingIndexManager(num_locations, 1, 0)
+    routing = pywrapcp.RoutingModel(manager)
 
     # Transit callback
     def time_callback(from_index, to_index):
@@ -59,7 +59,7 @@ def solve_vrp(data: dict) -> dict:
         time_dimension.SlackVar(index).SetValue(service_time)
 
     # Search parameters
-    search_parameters = pywraprouter.DefaultRoutingSearchParameters()
+    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     )
