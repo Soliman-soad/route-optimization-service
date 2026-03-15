@@ -60,7 +60,6 @@ export function renderMapPage(record: any): string {
     lng: data.driverStart.lng,
   });
 
-  console.log('geometryJson', geometryJson);
 
   const stopRows = data.optimizedSequence
     .map((s, i) => {

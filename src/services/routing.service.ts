@@ -47,7 +47,7 @@ export async function getMatrix(points: CoordPoint[]): Promise<MatrixResult> {
   // ORS expects [lng, lat]
   const locations = points.map((p) => [p.lng, p.lat]);
 
-  
+
 
   try {
     const response = await axios.post(
@@ -77,58 +77,58 @@ export async function getMatrix(points: CoordPoint[]): Promise<MatrixResult> {
  */
 export async function getDirections(
   orderedPoints: CoordPoint[],
-  stopIds: string[]  // ids in order (first one is 'start', rest match points[1..])
+  stopIds: string[]
 ): Promise<RouteResult> {
   const apiKey = process.env.ORS_API_KEY;
-  if (!apiKey) {
-    throw new Error('ORS_API_KEY environment variable is not set');
-  }
+  if (!apiKey) throw new Error("ORS_API_KEY environment variable is not set");
 
-  // ORS expects [lng, lat]
   const coordinates = orderedPoints.map((p) => [p.lng, p.lat]);
 
   try {
     const startTime = Date.now();
     const response = await axios.post(
-      `${ORS_BASE}/directions/driving-car`,
+      `${ORS_BASE}/directions/driving-car/geojson`,
       { coordinates },
       {
         headers: {
-          Authorization: `${apiKey}`,
-          'Content-Type': 'application/json',
+          Authorization: apiKey,
+          "Content-Type": "application/json",
         },
         timeout: 15000,
       }
     );
-    const orsTime = Date.now() - startTime;
-    logger.info('ORS Directions call complete', { ors_time_ms: orsTime });
 
-    const route = response.data.routes[0];
-    if (!route) {
-      throw new Error('ORS returned no routes');
-    }
+    logger.info("ORS Directions call complete", {
+      ors_time_ms: Date.now() - startTime,
+    });
 
-    // Extract GeoJSON geometry
-    const geometry: GeoJSONLineString = route.geometry as GeoJSONLineString;
+    // FIX: GeoJSON returns `features`, not `routes`
+    const feature = response.data.features?.[0];
+    if (!feature) throw new Error("ORS returned no features");
 
-    // Extract per-leg info
-    const segments: Array<{ distance: number; duration: number }> = route.segments ?? [];
+    const geometry: GeoJSONLineString = feature.geometry;
+    const properties = feature.properties;
 
-    const legs: LegResult[] = segments.map((seg, i) => ({
-      from: stopIds[i] ?? 'start',
-      to: stopIds[i + 1] ?? 'unknown',
+    const segments = properties.segments ?? [];
+
+    const legs: LegResult[] = segments.map((seg: { distance: number; duration: number }, i: number) => ({
+      from: stopIds[i] ?? "start",
+      to: stopIds[i + 1] ?? "unknown",
       distance_m: Math.round(seg.distance),
       duration_s: Math.round(seg.duration),
     }));
 
-    const summary = route.summary;
-    const total_distance_m = Math.round(summary.distance as number);
-    const total_duration_s = Math.round(summary.duration as number);
+    const summary = properties.summary;
 
-    return { legs, route_geometry: geometry, total_distance_m, total_duration_s };
+    return {
+      legs,
+      route_geometry: geometry,
+      total_distance_m: Math.round(summary.distance),
+      total_duration_s: Math.round(summary.duration),
+    };
   } catch (err) {
     const message = extractAxiosError(err);
-    logger.error('ORS Directions API failed', { error: message });
+    logger.error("ORS Directions API failed", { error: message });
     throw new Error(`ORS Directions API unavailable: ${message}`);
   }
 }
