@@ -28,7 +28,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:password@db:5432/routeopt
+      DATABASE_URL: ${DATABASE_URL}
       PORT: 3000
       NODE_ENV: production
       OR_TOOLS_TIME_LIMIT_MS: 5000
